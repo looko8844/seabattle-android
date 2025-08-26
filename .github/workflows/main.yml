@@ -75,3 +75,15 @@ jobs:
         
         # Configure buildozer to use our SDK
         mkdir -p ~/.buildozer
+        echo "export ANDROID_HOME=$ANDROID_HOME" >> ~/.buildozer/config
+        echo "export ANDROID_SDK_ROOT=$ANDROID_HOME" >> ~/.buildozer/config
+        
+        buildozer android debug
+    
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      if: success()
+      with:
+        name: seabattle-apk
+        path: bin/*.apk
+        retention-days: 30
