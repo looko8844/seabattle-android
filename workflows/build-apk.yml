@@ -1,0 +1,64 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y build-essential git python3 python3-dev
+        sudo apt install -y openjdk-8-jdk
+        sudo apt install -y ffmpeg libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev
+        sudo apt install -y libportmidi-dev libswscale-dev libavformat-dev libavcodec-dev zlib1g-dev
+        export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
+        echo "JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64" >> $GITHUB_ENV
+    
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install buildozer cython wheel setuptools
+    
+    - name: Prepare buildozer config
+      run: |
+        if [ -f "simple_buildozer.spec" ]; then
+          cp simple_buildozer.spec buildozer.spec
+        fi
+        
+        # Ensure main.py exists
+        if [ ! -f "main.py" ] && [ -f "main_kivy.py" ]; then
+          cp main_kivy.py main.py
+        fi
+    
+    - name: Build APK
+      run: |
+        export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
+        export ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk
+        export ANDROID_NDK_HOME=$HOME/.buildozer/android/platform/android-ndk-r25b
+        export PATH=$PATH:$ANDROID_HOME/tools:$ANDROID_HOME/platform-tools
+        
+        buildozer android debug
+    
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      if: success()
+      with:
+        name: seabattle-apk
+        path: bin/*.apk
+        retention-days: 30
