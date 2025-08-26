@@ -16,7 +16,7 @@ jobs:
       uses: actions/checkout@v4
     
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.9'
     
@@ -27,8 +27,25 @@ jobs:
         sudo apt install -y openjdk-8-jdk
         sudo apt install -y ffmpeg libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev
         sudo apt install -y libportmidi-dev libswscale-dev libavformat-dev libavcodec-dev zlib1g-dev
+        
+        # Install Android SDK tools manually
+        wget -q https://dl.google.com/android/repository/commandlinetools-linux-8512546_latest.zip
+        unzip -q commandlinetools-linux-8512546_latest.zip
+        mkdir -p $HOME/android-sdk/cmdline-tools
+        mv cmdline-tools $HOME/android-sdk/cmdline-tools/latest
+        
+        export ANDROID_HOME=$HOME/android-sdk
+        export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
         export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
+        
+        echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
         echo "JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64" >> $GITHUB_ENV
+        echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
+        echo "$HOME/android-sdk/platform-tools" >> $GITHUB_PATH
+        
+        # Accept licenses and install build-tools
+        yes | sdkmanager --licenses || true
+        sdkmanager "platform-tools" "build-tools;30.0.3" "platforms;android-31"
     
     - name: Install Python dependencies
       run: |
@@ -37,7 +54,11 @@ jobs:
     
     - name: Prepare buildozer config
       run: |
-        if [ -f "simple_buildozer.spec" ]; then
+        if [ -f "ultra_simple_buildozer.spec" ]; then
+          cp ultra_simple_buildozer.spec buildozer.spec
+        elif [ -f "simple_buildozer_fixed.spec" ]; then
+          cp simple_buildozer_fixed.spec buildozer.spec
+        elif [ -f "simple_buildozer.spec" ]; then
           cp simple_buildozer.spec buildozer.spec
         fi
         
@@ -49,9 +70,13 @@ jobs:
     - name: Build APK
       run: |
         export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
-        export ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk
-        export ANDROID_NDK_HOME=$HOME/.buildozer/android/platform/android-ndk-r25b
-        export PATH=$PATH:$ANDROID_HOME/tools:$ANDROID_HOME/platform-tools
+        export ANDROID_HOME=$HOME/android-sdk
+        export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/30.0.3
+        
+        # Configure buildozer to use our SDK
+        mkdir -p ~/.buildozer
+        echo "export ANDROID_HOME=$ANDROID_HOME" >> ~/.buildozer/config
+        echo "export ANDROID_SDK_ROOT=$ANDROID_HOME" >> ~/.buildozer/config
         
         buildozer android debug
     
@@ -62,8 +87,3 @@ jobs:
         name: seabattle-apk
         path: bin/*.apk
         retention-days: 30
-name: Create Release
-  uses: softprops/action-gh-release@v1
-  if: startsWith(github.ref, 'refs/tags/')
-  with:
-    files: bin/*.apk
