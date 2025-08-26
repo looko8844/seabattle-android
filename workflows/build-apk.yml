@@ -62,3 +62,8 @@ jobs:
         name: seabattle-apk
         path: bin/*.apk
         retention-days: 30
+name: Create Release
+  uses: softprops/action-gh-release@v1
+  if: startsWith(github.ref, 'refs/tags/')
+  with:
+    files: bin/*.apk
