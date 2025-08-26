@@ -27,9 +27,25 @@ jobs:
         sudo apt install -y openjdk-8-jdk
         sudo apt install -y ffmpeg libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev
         sudo apt install -y libportmidi-dev libswscale-dev libavformat-dev libavcodec-dev zlib1g-dev
-        sudo apt install -y aidl android-sdk-platform-tools-common
+        
+        # Install Android SDK tools manually
+        wget -q https://dl.google.com/android/repository/commandlinetools-linux-8512546_latest.zip
+        unzip -q commandlinetools-linux-8512546_latest.zip
+        mkdir -p $HOME/android-sdk/cmdline-tools
+        mv cmdline-tools $HOME/android-sdk/cmdline-tools/latest
+        
+        export ANDROID_HOME=$HOME/android-sdk
+        export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
         export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
+        
+        echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
         echo "JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64" >> $GITHUB_ENV
+        echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
+        echo "$HOME/android-sdk/platform-tools" >> $GITHUB_PATH
+        
+        # Accept licenses and install build-tools
+        yes | sdkmanager --licenses || true
+        sdkmanager "platform-tools" "build-tools;30.0.3" "platforms;android-31"
     
     - name: Install Python dependencies
       run: |
@@ -38,7 +54,9 @@ jobs:
     
     - name: Prepare buildozer config
       run: |
-        if [ -f "simple_buildozer_fixed.spec" ]; then
+        if [ -f "ultra_simple_buildozer.spec" ]; then
+          cp ultra_simple_buildozer.spec buildozer.spec
+        elif [ -f "simple_buildozer_fixed.spec" ]; then
           cp simple_buildozer_fixed.spec buildozer.spec
         elif [ -f "simple_buildozer.spec" ]; then
           cp simple_buildozer.spec buildozer.spec
@@ -52,26 +70,8 @@ jobs:
     - name: Build APK
       run: |
         export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
-        export ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk
-        export ANDROID_NDK_HOME=$HOME/.buildozer/android/platform/android-ndk-r25b
-        export PATH=$PATH:$ANDROID_HOME/tools:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/30.0.3
+        export ANDROID_HOME=$HOME/android-sdk
+        export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/30.0.3
         
-        # Initialize buildozer first to download SDK
-        buildozer android debug || true
-        
-        # Add build-tools to PATH after SDK is downloaded
-        if [ -d "$ANDROID_HOME/build-tools" ]; then
-          BUILD_TOOLS_VERSION=$(ls $ANDROID_HOME/build-tools | sort -V | tail -1)
-          export PATH=$PATH:$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION
-        fi
-        
-        # Try build again with proper PATH
-        buildozer android debug
-    
-    - name: Upload APK
-      uses: actions/upload-artifact@v4
-      if: success()
-      with:
-        name: seabattle-apk
-        path: bin/*.apk
-        retention-days: 30
+        # Configure buildozer to use our SDK
+        mkdir -p ~/.buildozer
