@@ -10,80 +10,75 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.9'
-    
+    # 1. Клонування репозиторію
+    - uses: actions/checkout@v4
+
+    # 2. Встановлення базових залежностей та Java
     - name: Install system dependencies
       run: |
-        sudo apt update
-        sudo apt install -y build-essential git python3 python3-dev
-        sudo apt install -y openjdk-8-jdk
-        sudo apt install -y ffmpeg libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev
-        sudo apt install -y libportmidi-dev libswscale-dev libavformat-dev libavcodec-dev zlib1g-dev
-        
-        # Install Android SDK tools manually
-        wget -q https://dl.google.com/android/repository/commandlinetools-linux-8512546_latest.zip
-        unzip -q commandlinetools-linux-8512546_latest.zip
-        mkdir -p $HOME/android-sdk/cmdline-tools
-        mv cmdline-tools $HOME/android-sdk/cmdline-tools/latest
-        
-        export ANDROID_HOME=$HOME/android-sdk
-        export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
-        export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
-        
-        echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
-        echo "JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64" >> $GITHUB_ENV
-        echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
-        echo "$HOME/android-sdk/platform-tools" >> $GITHUB_PATH
-        
-        # Accept licenses and install build-tools
-        yes | sdkmanager --licenses || true
-        sdkmanager "platform-tools" "build-tools;30.0.3" "platforms;android-31"
-    
+        sudo apt-get update
+        sudo apt-get install -y openjdk-17-jdk unzip wget python3-pip git build-essential \
+          autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6 \
+          cmake libffi-dev libssl-dev curl
+
+    # 3. Завантаження та установка Android SDK command-line tools
+    - name: Install Android SDK
+      run: |
+        mkdir -p $HOME/Android/cmdline-tools
+        wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
+        unzip cmdline-tools.zip -d $HOME/Android/cmdline-tools
+        export ANDROID_SDK_ROOT=$HOME/Android
+        export PATH=$ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools/bin:$PATH
+        yes | sdkmanager --licenses
+        sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.0"
+
+    # 4. Налаштування середовища Java та Android
+    - name: Setup environment variables
+      run: |
+        echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
+        echo "/usr/lib/jvm/java-17-openjdk-amd64/bin" >> $GITHUB_PATH
+        echo "ANDROID_HOME=$HOME/Android" >> $GITHUB_ENV
+        echo "$HOME/Android/platform-tools:$HOME/Android/cmdline-tools/cmdline-tools/bin" >> $GITHUB_PATH
+
+    # 5. Встановлення Python залежностей
     - name: Install Python dependencies
       run: |
-        python -m pip install --upgrade pip
-        pip install buildozer cython wheel setuptools
-    
-    - name: Prepare buildozer config
+        pip3 install --upgrade pip
+        pip3 install cython==0.29.36
+        pip3 install buildozer
+
+    # 6. Build APK
+    - name: Build APK with Buildozer
+      working-directory: ./   # переконайтесь, що buildozer.spec в корені репо
       run: |
-        if [ -f "ultra_simple_buildozer.spec" ]; then
-          cp ultra_simple_buildozer.spec buildozer.spec
-        elif [ -f "simple_buildozer_fixed.spec" ]; then
-          cp simple_buildozer_fixed.spec buildozer.spec
-        elif [ -f "simple_buildozer.spec" ]; then
-          cp simple_buildozer.spec buildozer.spec
-        fi
-        
-        # Ensure main.py exists
-        if [ ! -f "main.py" ] && [ -f "main_kivy.py" ]; then
-          cp main_kivy.py main.py
-        fi
-    
-    - name: Build APK
-      run: |
-        export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
-        export ANDROID_HOME=$HOME/android-sdk
-        export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/30.0.3
-        
-        # Configure buildozer to use our SDK
-        mkdir -p ~/.buildozer
-        echo "export ANDROID_HOME=$ANDROID_HOME" >> ~/.buildozer/config
-        echo "export ANDROID_SDK_ROOT=$ANDROID_HOME" >> ~/.buildozer/config
-        
-        buildozer android debug
-    
-    - name: Upload APK
+        buildozer -v android debug
+
+    # 7. Завантаження APK як артефакт
+    - name: Upload APK artifact
       uses: actions/upload-artifact@v4
-      if: success()
       with:
-        name: seabattle-apk
+        name: seabattle-debug-apk
         path: bin/*.apk
-        retention-days: 30
+
+    # 8. Створення GitHub Release
+    - name: Create Release
+      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ github.run_number }}
+        name: Морський Бій v${{ github.run_number }}
+        body: |
+          Автоматично згенерована збірка гри "Морський Бій"
+          
+          **Зміни:**
+          - Оновлена версія гри
+          - Покращення стабільності
+          
+          **Встановлення:**
+          1. Завантажте APK файл
+          2. Увімкніть "Невідомі джерела" в налаштуваннях Android
+          3. Встановіть APK файл
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
