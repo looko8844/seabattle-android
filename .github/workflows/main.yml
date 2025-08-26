@@ -27,6 +27,7 @@ jobs:
         sudo apt install -y openjdk-8-jdk
         sudo apt install -y ffmpeg libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev
         sudo apt install -y libportmidi-dev libswscale-dev libavformat-dev libavcodec-dev zlib1g-dev
+        sudo apt install -y aidl android-sdk-platform-tools-common
         export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
         echo "JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64" >> $GITHUB_ENV
     
@@ -37,7 +38,9 @@ jobs:
     
     - name: Prepare buildozer config
       run: |
-        if [ -f "simple_buildozer.spec" ]; then
+        if [ -f "simple_buildozer_fixed.spec" ]; then
+          cp simple_buildozer_fixed.spec buildozer.spec
+        elif [ -f "simple_buildozer.spec" ]; then
           cp simple_buildozer.spec buildozer.spec
         fi
         
@@ -51,8 +54,18 @@ jobs:
         export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
         export ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk
         export ANDROID_NDK_HOME=$HOME/.buildozer/android/platform/android-ndk-r25b
-        export PATH=$PATH:$ANDROID_HOME/tools:$ANDROID_HOME/platform-tools
+        export PATH=$PATH:$ANDROID_HOME/tools:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/30.0.3
         
+        # Initialize buildozer first to download SDK
+        buildozer android debug || true
+        
+        # Add build-tools to PATH after SDK is downloaded
+        if [ -d "$ANDROID_HOME/build-tools" ]; then
+          BUILD_TOOLS_VERSION=$(ls $ANDROID_HOME/build-tools | sort -V | tail -1)
+          export PATH=$PATH:$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION
+        fi
+        
+        # Try build again with proper PATH
         buildozer android debug
     
     - name: Upload APK
